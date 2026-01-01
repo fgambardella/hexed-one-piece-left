@@ -3,7 +3,7 @@
 # Configuration
 VENV_DIR="venv"
 REQUIREMENTS_FILE="requirements.txt"
-APP_SCRIPT="hex_gui.py"
+APP_SCRIPT="hexed_gui.py"
 
 # Function to handle errors
 handle_error() {
@@ -11,7 +11,7 @@ handle_error() {
     exit 1
 }
 
-echo "=== Hex Solver Launcher ==="
+echo "=== Hexed One Piece Left Launcher ==="
 
 # 1. Create virtual environment if it doesn't exist
 if [ ! -d "$VENV_DIR" ]; then

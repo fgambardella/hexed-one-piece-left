@@ -1,12 +1,12 @@
 #!/bin/bash
 # Script to generate documentation for the project
 
-DOC_FILE="hex_gui.html"
+DOC_FILE="hexed_gui.html"
 
-echo "Generating documentation for hex_gui.py..."
+echo "Generating documentation for hexed_gui.py..."
 
 # Use pydoc to generate HTML documentation
-./venv/bin/python3 -m pydoc -w hex_gui
+./venv/bin/python3 -m pydoc -w hexed_gui
 
 if [ -f "$DOC_FILE" ]; then
     echo "Documentation generated successfully: $DOC_FILE"

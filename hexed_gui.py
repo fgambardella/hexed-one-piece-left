@@ -167,7 +167,12 @@ class HexGame:
             drs = [p[0] for p in normalized]
             dcs = [p[1] for p in normalized]
             p_h = (max(drs) - min(drs) + 1) * self.tri_h
-            p_w = (max(dcs) - min(dcs) + 1) * (self.tri_w / 2)
+            
+            # Width calculation: (max_col - min_col) * half_w + triangle_width
+            # triangle_width = 2 * half_w
+            # So width = (max - min) * half + 2 * half = (max - min + 2) * half
+            half_w = self.tri_w / 2
+            p_w = (max(dcs) - min(dcs) + 2) * half_w
             
             # Check width fit
             if current_inv_x + p_w > inv_start_x + inv_width:
@@ -177,7 +182,12 @@ class HexGame:
                 current_row_h = 0
             
             # Assign position
-            px, py = current_inv_x, current_inv_y
+            # We want the *visual left* of the piece to be at current_inv_x
+            # Visual left is at: px + min(dcs) * half_w
+            # So: px + min(dcs) * half_w = current_inv_x
+            # => px = current_inv_x - min(dcs) * half_w
+            px = current_inv_x - min(dcs) * half_w
+            py = current_inv_y
             
             # Piece specific: Update its reset_pos and screen_pos
             piece['reset_pos'] = (px, py)
