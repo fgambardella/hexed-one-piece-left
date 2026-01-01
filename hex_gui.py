@@ -4,14 +4,22 @@ import time
 import sys
 import math
 
-# --- CONFIGURAZIONE ---
+# --- CONFIGURATION ---
 HEX_SIDE = 3
-TARGET_DELAY = 50 # ms tra gli step (controlla la velocità visiva)
+TARGET_DELAY = 50 # ms between steps (controls visual speed)
 
-# Colori (RGB)
-BG_COLOR = (15, 15, 20) # Scuro, moderno
-GRID_COLOR = (40, 40, 50)
+# Colors (RGB)
+# Colors (RGB)
+BG_COLOR = (15, 15, 20) # Dark, modern
+GRID_COLOR = (60, 60, 70) # Increased contrast
 TEXT_COLOR = (200, 200, 200)
+BUTTON_COLOR = (50, 150, 50)
+BUTTON_HOVER_COLOR = (70, 180, 70)
+BUTTON_TEXT_COLOR = (255, 255, 255)
+INVENTORY_BG_COLOR = (20, 20, 25)
+
+# UI Config
+INVENTORY_RATIO = 0.3 # 30% of screen width for inventory
 
 PIECE_COLORS_RGB = [
     (255, 107, 107), (78, 205, 196), (255, 230, 109), (26, 83, 92), 
@@ -21,7 +29,13 @@ PIECE_COLORS_RGB = [
 ]
 
 class HexGame:
+    """
+    A class to represent and solve a Hexagon tiling puzzle using a backtracking algorithm with visual representation.
+    """
     def __init__(self):
+        """
+        Initialize the HexGame, setting up the Pygame window, grid, pieces, and solver.
+        """
         pygame.init()
         
         # Setup Fullscreen
@@ -29,63 +43,156 @@ class HexGame:
         self.width = info.current_w
         self.height = info.current_h
         self.screen = pygame.display.set_mode((self.width, self.height), pygame.FULLSCREEN | pygame.HWSURFACE | pygame.DOUBLEBUF)
-        pygame.display.set_caption("Hex Solver GPU")
+        pygame.display.set_caption("HEXED: One Piece Left")
         
         self.clock = pygame.time.Clock()
         self.font = pygame.font.SysFont("Arial", 24)
         
-        # Logica del Solver
+        # Solver Logic
         self.side = HEX_SIDE
         self.grid = {}
         self.pieces = []
-        self.init_hexagon_grid()
-        self.generate_random_pieces()
+        self.dragging_piece = None
+        self.drag_offset = (0, 0)
+        self.solving = False # Flag to indicate if solver is running
         
-        # Generator del solver
+        self.init_hexagon_grid()
+        
+        self.init_hexagon_grid()
+        self.generate_random_pieces() 
+        
+        # Calculate graphic dimensions and layout inventory iteratively to fit
+        self.fit_graphics_and_layout()
+        
+        # Solver Generator
         self.solver_iter = self.solve_generator()
         self.solved = False
-        self.start_time = time.time()
+        self.start_time = 0 # Will be set when solving starts
         self.solution_time = 0
         
-        # Calcolo dimensioni grafiche
-        self.calc_metrics()
+        # UI Elements
+        button_w, button_h = 160, 50
+        self.solve_button_rect = pygame.Rect(
+            self.width - button_w - 20, 
+            self.height - button_h - 20, 
+            button_w, button_h
+        )
 
-    def calc_metrics(self):
-        # Calcola la scala per centrare l'esagono nello schermo
-        # Griglia va da 'side' verticalmente
-        grid_h_units = self.side * 2  # num righe
-        grid_w_units = self.side * 4 # approx larghezza
+    def calc_metrics(self, scale_h=None):
+        """
+        Calculate the scaling and offsets to center the hexagon grid on the screen.
+        """
+        # Calculate scale to center hexagon on screen
+        # Grid goes from 'side' vertically
+        grid_h_units = self.side * 2  # num rows
+        grid_w_units = self.side * 4 # approx width
         
-        # Margini
-        avail_h = self.height * 0.8
-        avail_w = self.width * 0.8
+        # Margins & Layout
+        # Grid takes up left portion
+        grid_width_px = self.width * (1 - INVENTORY_RATIO)
+        
+        avail_h = scale_h if scale_h else self.height * 0.8
+        avail_w = grid_width_px * 0.8
         
         self.tri_h = avail_h / grid_h_units
-        # In un triangolo equilatero/simile, w = h * 2 / sqrt(3) per equilatero, ma qui usiamo w=base
-        # Usiamo aspect ratio semplice per riempire
+        # In an equilateral/similar triangle, w = h * 2 / sqrt(3) for equilateral, but here we use w=base
+        # We use simple aspect ratio to fill
         self.tri_w = self.tri_h * 1.2 
         
-        # Offset Centramento
-        # Bounding box logico
+        # Centering Offset
+        # Logical Bounding box
         min_r = min(k[0] for k in self.grid)
         max_r = max(k[0] for k in self.grid)
         min_c = min(k[1] for k in self.grid)
         max_c = max(k[1] for k in self.grid)
         
-        center_x = self.width / 2
         center_y = self.height / 2
-        
-        # Centriamo il punto (max_r/2, max_c/2) approx
-        grid_pixel_w = (max_c - min_c) * (self.tri_w / 2) 
         grid_pixel_h = (max_r - min_r) * self.tri_h
         
-        self.offset_x = center_x - grid_pixel_w / 2 - (min_c * self.tri_w / 2)
+        # Left Align
+        # We want the leftmost part of the grid to start at a fixed margin (e.g., 50px)
+        # x_base = offset_x + c * half_w
+        # min_x = offset_x + min_c * half_w
+        # we want min_x = 50
+        # => offset_x = 50 - min_c * half_w
+        
+        self.offset_x = 50 - (min_c * self.tri_w / 2)
         self.offset_y = center_y - grid_pixel_h / 2 - (min_r * self.tri_h)
 
-        # Correzione offset specifica per la forma
-        self.offset_x -= self.tri_w * 2
+    def fit_graphics_and_layout(self):
+        """
+        Iteratively adjusts the scale to ensure both the grid and the inventory pieces fit on screen.
+        """
+        # Initial available size
+        avail_h = self.height * 0.9
+        
+        # Loop to reduce size if inventory overflows
+        valid_layout = False
+        scale_factor = 1.0
+        min_scale = 0.3
+        
+        while not valid_layout and scale_factor >= min_scale:
+            self.calc_metrics(scale_h=avail_h * scale_factor)
+            valid_layout = self.layout_inventory()
+            if not valid_layout:
+                scale_factor -= 0.05
+        
+        if not valid_layout:
+            print("Warning: Could not fit pieces perfectly even at minimum scale.")
+
+    def layout_inventory(self):
+        """
+        Calculates screen positions for all unplaced pieces in the inventory area.
+        Returns True if they all fit, False otherwise.
+        """
+        inv_start_x = self.width * (1 - INVENTORY_RATIO) + 30
+        inv_width = self.width * INVENTORY_RATIO - 60
+        inv_start_y = 50
+        
+        current_inv_x = inv_start_x
+        current_inv_y = inv_start_y
+        current_row_h = 0
+        
+        for piece in self.pieces:
+            if piece['placed']: continue
+            
+            # Calculate piece dimensions using current self.tri_w/h
+            normalized = piece['shape']
+            drs = [p[0] for p in normalized]
+            dcs = [p[1] for p in normalized]
+            p_h = (max(drs) - min(drs) + 1) * self.tri_h
+            p_w = (max(dcs) - min(dcs) + 1) * (self.tri_w / 2)
+            
+            # Check width fit
+            if current_inv_x + p_w > inv_start_x + inv_width:
+                 # New row
+                current_inv_x = inv_start_x
+                current_inv_y += current_row_h + 10 # reduced padding
+                current_row_h = 0
+            
+            # Assign position
+            px, py = current_inv_x, current_inv_y
+            
+            # Piece specific: Update its reset_pos and screen_pos
+            piece['reset_pos'] = (px, py)
+            if not piece['placed'] and piece is not self.dragging_piece:
+                piece['screen_pos'] = (px, py)
+            
+            # Advance cursors
+            current_inv_x += p_w + 10 # reduced padding
+            current_row_h = max(current_row_h, p_h)
+            
+        # Check if we overflowed height
+        total_h = current_inv_y + current_row_h
+        if total_h > self.height - 20:
+            return False
+        return True
 
     def init_hexagon_grid(self):
+        """
+        Initialize the hexagonal grid coordinates.
+        The grid is represented as a dictionary where keys are (row, col) tuples.
+        """
         self.grid = {}
         max_width = (2 * self.side + 1) + 2 * (self.side - 1)
         for r in range(self.side * 2):
@@ -100,6 +207,16 @@ class HexGame:
                 self.grid[(r, c)] = None
 
     def get_neighbors(self, r, c):
+        """
+        Get the neighbors of a given cell in the grid.
+        
+        Args:
+            r (int): Row index.
+            c (int): Column index.
+            
+        Returns:
+            list: List of (row, col) tuples representing neighbor coordinates.
+        """
         neighs = [(r, c-1), (r, c+1)]
         if (r + c) % 2 == 0: 
             neighs.append((r + 1, c))
@@ -108,7 +225,11 @@ class HexGame:
         return neighs
 
     def generate_random_pieces(self):
-        # Logica identica allo script precedente...
+        """
+        Generate random puzzle pieces to fill the grid.
+        Ensures that the total area of pieces matches the grid area.
+        """
+        # Logic identical to previous script...
         while True:
             for k in self.grid: self.grid[k] = None
             self.pieces = []
@@ -152,29 +273,126 @@ class HexGame:
                     ref_r, ref_c = min(new_piece_coords)
                     normalized = [(r-ref_r, c-ref_c) for r, c in new_piece_coords]
                     color = PIECE_COLORS_RGB[piece_id_counter % len(PIECE_COLORS_RGB)]
-                    self.pieces.append({'id': piece_id_counter, 'shape': normalized, 'color': color, 'placed': False})
+                    
+                    anchor_parity = (ref_r + ref_c) % 2
+
+                    # Store piece object - Positions will be set by layout_inventory later
+                    piece_obj = {
+                        'id': piece_id_counter, 
+                        'shape': normalized, 
+                        'color': color, 
+                        'placed': False,
+                        'anchor_parity': anchor_parity,
+                        'screen_pos': (0, 0),
+                        'reset_pos': (0, 0),
+                        'rect': None
+                    }
+                    self.pieces.append(piece_obj)
                     piece_id_counter += 1
             
             if not generation_failed: break
         
         for k in self.grid: self.grid[k] = None
 
+    def screen_to_grid(self, x, y, required_parity=None):
+        """
+        Convert screen coordinates to approximate grid coordinates.
+        This is a heuristic approach finding the closest cell center.
+        
+        Args:
+            x (float): Screen x coordinate.
+            y (float): Screen y coordinate.
+            required_parity (int, optional): If set, only returns cells with (r+c)%2 == parity.
+        """
+        best_dist = float('inf')
+        best_cell = None
+        
+        # Optimize by only checking valid grid centers
+        for r, c in self.grid.keys():
+            # Filter by parity to prevent shape mutation
+            if required_parity is not None and (r + c) % 2 != required_parity:
+                continue
+                
+            # Get center of this cell
+            points = self.get_triangle_points(r, c)
+            # Centroid approx
+            cx = sum(p[0] for p in points) / 3
+            cy = sum(p[1] for p in points) / 3
+            
+            dist = math.hypot(x - cx, y - cy)
+            if dist < self.tri_w: # Threshold
+                if dist < best_dist:
+                    best_dist = dist
+                    best_cell = (r, c)
+        
+        return best_cell
+
+    def reset_grid(self):
+        """
+        Resets the grid and puts all pieces back in inventory.
+        """
+        for k in self.grid: self.grid[k] = None
+        for p in self.pieces:
+            p['placed'] = False
+            p['screen_pos'] = p['reset_pos']
+        self.solved = False
+        self.dragging_piece = None
+        # Re-layout inventory just in case
+        self.layout_inventory()
+        
+    def start_solving(self):
+        """
+        Resets the puzzle and starts the automatic solver.
+        """
+        self.reset_grid()
+        self.solving = True
+        self.start_time = time.time()
+        self.solver_iter = self.solve_generator()
+
     def can_place(self, shapes, r, c):
+        """
+        Check if a piece can be placed at the specified coordinates.
+        
+        Args:
+            shapes (list): List of relative coordinates (dr, dc) for the piece shape.
+            r (int): Target row.
+            c (int): Target column.
+            
+        Returns:
+            bool: True if the piece can be placed, False otherwise.
+        """
         for dr, dc in shapes:
             nr, nc = r + dr, c + dc
             if (nr, nc) not in self.grid or self.grid[(nr, nc)] is not None: return False
         return True
 
     def place_piece(self, piece, r, c, remove=False):
+        """
+        Place or remove a piece from the grid.
+        
+        Args:
+            piece (dict): The piece object to place/remove.
+            r (int): Row coordinate.
+            c (int): Column coordinate.
+            remove (bool): If True, removes the piece (sets grid cells to None).
+        """
         for dr, dc in piece['shape']:
             self.grid[(r+dr, c+dc)] = None if remove else piece['id']
         piece['placed'] = not remove
+        if not remove:
+            piece['grid_pos'] = (r, c)
 
     def solve_generator(self):
-        """ Generatore coroutine per il backtracking """
-        # Trova cella vuota
+        """
+        Coroutine generator for the backtracking solver.
+        Yields control back to the main loop to allow for GUI updates.
+        
+        Yields:
+            bool: True if solved, False if continuing search.
+        """
+        # Find empty cell
         empty_spot = None
-        # Sorting stabile per determinismo
+        # Stable sorting for determinism
         sorted_cells = sorted(self.grid.keys())
         for cell in sorted_cells:
             if self.grid[cell] is None:
@@ -191,7 +409,7 @@ class HexGame:
             if not piece['placed']:
                 if self.can_place(piece['shape'], r, c):
                     self.place_piece(piece, r, c)
-                    yield False # Step fatto, continua
+                    yield False # Step done, continue
                     
                     # Recursion via 'yield from'
                     yield from self.solve_generator()
@@ -203,41 +421,142 @@ class HexGame:
                     yield False # Backtrack step
 
     def is_solved(self):
+        """
+        Check if the puzzle is completely solved.
+        
+        Returns:
+            bool: True if all grid cells are filled, False otherwise.
+        """
         return all(v is not None for v in self.grid.values())
 
     def get_triangle_points(self, r, c):
+        """
+        Calculate the screen coordinates for the vertices of a triangular cell.
+        
+        Args:
+            r (int): Row index.
+            c (int): Column index.
+            
+        Returns:
+            list: List of (x, y) tuples for the triangle vertices.
+        """
         half_w = self.tri_w / 2
         x_base = self.offset_x + c * half_w
         y_top = self.offset_y + r * self.tri_h
         y_bot = self.offset_y + (r + 1) * self.tri_h
         
-        if (r + c) % 2 == 0: # Punta SU
+        if (r + c) % 2 == 0: # Point UP
             p1 = (x_base + half_w, y_top)      # Top
             p2 = (x_base, y_bot)               # Bot Left
             p3 = (x_base + self.tri_w, y_bot)  # Bot Right
-        else: # Punta GIÙ
+        else: # Point DOWN
             p1 = (x_base, y_top)               # Top Left
             p2 = (x_base + self.tri_w, y_top)  # Top Right
             p3 = (x_base + half_w, y_bot)      # Bot
         return [p1, p2, p3]
 
     def draw(self):
+        """
+        Render the game state to the screen.
+        """
         self.screen.fill(BG_COLOR)
         
-        # Disegna celle
+        # Draw Inventory Background
+        # Draw Inventory Background
+        inv_rect = pygame.Rect(self.width * (1 - INVENTORY_RATIO), 0, self.width * INVENTORY_RATIO, self.height)
+        pygame.draw.rect(self.screen, INVENTORY_BG_COLOR, inv_rect)
+        
+        # Draw Divider Line
+        line_x = self.width * (1 - INVENTORY_RATIO)
+        pygame.draw.line(self.screen, GRID_COLOR, (line_x, 0), (line_x, self.height), 3)
+        
+        # Draw Grid Cells
         for (r, c), pid in self.grid.items():
             points = self.get_triangle_points(r, c)
             
             if pid is not None:
                 color = self.pieces[pid]['color']
                 pygame.draw.polygon(self.screen, color, points)
-                # Bordo leggero per distacco visivo?
-                # pygame.draw.polygon(self.screen, (0,0,0), points, 1)
             else:
                 pygame.draw.polygon(self.screen, GRID_COLOR, points, 1)
 
-        # Info testo
-        status = "SOLVED!" if self.solved else "Solving..."
+        # Draw Pieces (Inventory or Dragging)
+        for piece in self.pieces:
+            if piece['placed']: continue
+            
+            # Position to draw: mouse pos if dragging, else inventory pos
+            if piece is self.dragging_piece:
+                dx, dy = self.drag_offset
+                mx, my = pygame.mouse.get_pos()
+                px, py = mx + dx, my + dy
+            else:
+                px, py = piece['screen_pos']
+            
+            # Construct shape polygon for drawing relative to (px, py)
+            # We need to reconstruct the visual shape from logical 'shape'
+            # This is tricky because logic is (dr, dc) but pixels depend on orientation.
+            # We will use a simplified relative drawing: treat (px,py) as center of piece(0,0)
+            
+            # Update rect for collision detection (only if not dragging, or update while dragging too)
+            # Calculate bounding box
+            min_x, max_x, min_y, max_y = float('inf'), float('-inf'), float('inf'), float('-inf')
+
+            for dr, dc in piece['shape']:
+                # Calculate proper visual offset for each triangle
+                off_x = dc * (self.tri_w * 0.5)
+                off_y = dr * self.tri_h
+                
+                # Determine orientation based on original grid parity
+                # logic: if (r+c)%2 == 0 it's point UP. using relative coords:
+                # relative parity = (dr + dc) % 2.
+                # Combined with anchor parity: (anchor_parity + relative_parity) % 2
+                # But wait, (ref_r + ref_c + dr + dc) % 2 = (parity + dr + dc) % 2
+                
+                is_point_up = (piece['anchor_parity'] + dr + dc) % 2 == 0
+                
+                base_x = px + off_x
+                base_y = py + off_y
+                
+                # Draw Triangle for UI
+                # We need points relative to base_x, base_y (which is roughly top-left of specific cell space)
+                # Let's reuse get_triangle_points logic but adapted for arbitrary screen pos
+                
+                half_w = self.tri_w / 2
+                
+                if is_point_up: # Point UP
+                    p1 = (base_x + half_w, base_y)           # Top
+                    p2 = (base_x, base_y + self.tri_h)       # Bot Left
+                    p3 = (base_x + self.tri_w, base_y + self.tri_h) # Bot Right
+                else: # Point DOWN
+                    p1 = (base_x, base_y)                    # Top Left
+                    p2 = (base_x + self.tri_w, base_y)       # Top Right
+                    p3 = (base_x + half_w, base_y + self.tri_h)   # Bot
+                
+                pygame.draw.polygon(self.screen, piece['color'], [p1, p2, p3])
+                # Optional border for pieces
+                pygame.draw.polygon(self.screen, BG_COLOR, [p1, p2, p3], 1)
+                
+                # Update Bounding Box
+                xs = [p[0] for p in [p1, p2, p3]]
+                ys = [p[1] for p in [p1, p2, p3]]
+                min_x = min(min_x, min(xs))
+                max_x = max(max_x, max(xs))
+                min_y = min(min_y, min(ys))
+                max_y = max(max_y, max(ys))
+
+            # Update bounding rect for interaction
+            piece['rect'] = pygame.Rect(min_x, min_y, max_x - min_x, max_y - min_y)
+
+        # Draw "Solve It" Button
+        color = BUTTON_HOVER_COLOR if self.solve_button_rect.collidepoint(pygame.mouse.get_pos()) else BUTTON_COLOR
+        pygame.draw.rect(self.screen, color, self.solve_button_rect, border_radius=10)
+        
+        btn_txt = self.font.render("SOLVE IT", True, BUTTON_TEXT_COLOR)
+        txt_rect = btn_txt.get_rect(center=self.solve_button_rect.center)
+        self.screen.blit(btn_txt, txt_rect)
+
+        # Info text
+        status = "SOLVED!" if self.solved else ("Solving..." if self.solving else "Manual Mode")
         if self.solved:
             ts = f"Time: {self.solution_time:.2f}s"
             txt = self.font.render(f"{status} {ts}", True, (50, 255, 50))
@@ -248,36 +567,148 @@ class HexGame:
         
         pygame.display.flip()
 
+    def handle_input(self):
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                return False
+            if event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_ESCAPE:
+                    return False
+            
+            # Mouse Interaction
+            if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                mx, my = event.pos
+                
+                # 1. Check Button
+                if self.solve_button_rect.collidepoint(mx, my):
+                    self.start_solving()
+                    continue
+                
+                # 2. Check Pieces (only if not solving)
+                if not self.solving:
+                    # Check pieces in inventory or placed?
+                    grid_width = self.width * (1 - INVENTORY_RATIO)
+                    
+                    if mx > grid_width:
+                        # Inventory Click
+                        for p in self.pieces:
+                            if p['placed']: continue 
+                            # If p has a rect and clicked
+                            if p['rect'] and p['rect'].collidepoint(mx, my):
+                                self.dragging_piece = p
+                                # Offset so piece doesn't snap to mouse center
+                                px, py = p['screen_pos']
+                                self.drag_offset = (px - mx, py - my)
+                                break
+                    else:
+                        # Grid Click - Potential Pickup
+                        cell = self.screen_to_grid(mx, my)
+                        if cell and cell in self.grid and self.grid[cell] is not None:
+                             pid = self.grid[cell]
+                             piece = self.pieces[pid]
+                             # Pick up the piece
+                             # Remove from grid
+                             if 'grid_pos' in piece:
+                                 self.place_piece(piece, *piece['grid_pos'], remove=True)
+                                 
+                                 # Calculate visual position from grid pos to avoid jumping
+                                 pr, pc = piece['grid_pos']
+                                 px = self.offset_x + pc * (self.tri_w / 2)
+                                 py = self.offset_y + pr * self.tri_h
+                                 
+                                 piece['screen_pos'] = (px, py)
+                                 self.dragging_piece = piece
+                                 self.drag_offset = (px - mx, py - my)
+            
+            elif event.type == pygame.MOUSEBUTTONUP and event.button == 1:
+                if self.dragging_piece:
+                    # Try to place
+                    mx, my = event.pos
+                    # Use center of the piece for placement snap
+                    # The piece screen pos (screen_pos) is the top-left of the bounding box roughly.
+                    # We want the "Anchor" triangle center.
+                    # Anchor is at relative (0,0). Visual offset is 0,0.
+                    # BUT piece['screen_pos'] is updated during drag to be (mx+dx, my+dy).
+                    
+                    px, py = self.dragging_piece['screen_pos']
+                    
+                    # Calculate Anchor Center
+                    # Anchor Parity determines point up or down.
+                    if self.dragging_piece['anchor_parity'] == 0: # Arbitrary up/down logic depending on map
+                         # Let's say parity 0 is Point UP (based on get_triangle_points)
+                         # (r+c)%2 == 0 -> Point UP.
+                         # Center is approx +half_w, +half_h
+                         anchor_cx = px + self.tri_w / 2
+                         anchor_cy = py + self.tri_h / 2 # simplified centroid
+                    else:
+                         anchor_cx = px + self.tri_w / 2
+                         anchor_cy = py + self.tri_h / 2
+                    
+                    # More robust: Just use px + half_w, py + half_h as a good enough proxy for anchor center
+                    anchor_cx = px + self.tri_w / 2
+                    anchor_cy = py + self.tri_h / 2
+
+                    # Enforce parity to prevent shape mutation
+                    required_p = self.dragging_piece['anchor_parity']
+                    target_cell = self.screen_to_grid(anchor_cx, anchor_cy, required_parity=required_p)
+                    
+                    placed = False
+                    if target_cell:
+                        tr, tc = target_cell
+                        if self.can_place(self.dragging_piece['shape'], tr, tc):
+                            self.place_piece(self.dragging_piece, tr, tc)
+                            placed = True
+                    
+                    if not placed:
+                        # Return to inventory (reset pos)
+                        self.dragging_piece['screen_pos'] = self.dragging_piece['reset_pos']
+                    
+                    self.dragging_piece = None
+            
+            # Update Drag Shadow Position to snap to correct parity
+            elif event.type == pygame.MOUSEMOTION:
+                if self.dragging_piece:
+                    # Optional: Add visual snap preview?
+                    # For now just standard drag
+                    pass
+
+        return True
+
     def run(self):
+        """
+        Main game loop. Handles events and updates the solver.
+        """
         running = True
         last_step = 0
         
         while running:
+            running = self.handle_input()
             now = pygame.time.get_ticks()
             
-            for event in pygame.event.get():
-                if event.type == pygame.QUIT:
-                    running = False
-                if event.type == pygame.KEYDOWN:
-                    if event.key == pygame.K_ESCAPE:
-                        running = False
-            
-            if not self.solved:
-                # Esegui step del solver se passato abbastanza tempo
+            if self.solving and not self.solved:
+                # Run solver step if enough time has passed
                 if now - last_step > TARGET_DELAY:
                     try:
                         res = next(self.solver_iter)
                         if res is True:
                             self.solved = True
                             self.solution_time = time.time() - self.start_time
+                            self.solving = False
                         elif self.is_solved(): # Check double catch
                             self.solved = True
                             self.solution_time = time.time() - self.start_time
+                            self.solving = False
                     except StopIteration:
-                        # Backtracking finito senza soluzione (impossibile con questo generatore, ma...)
-                        running = False 
+                        # Backtracking finished without solution (should not happen here)
+                        self.solving = False
                     last_step = now
             
+            # Update position of dragging piece to follow mouse
+            if self.dragging_piece:
+                mx, my = pygame.mouse.get_pos()
+                dx, dy = self.drag_offset
+                self.dragging_piece['screen_pos'] = (mx + dx, my + dy)
+
             self.draw()
             self.clock.tick(60) # 60 FPS rendering
 
