@@ -19,7 +19,7 @@ BUTTON_TEXT_COLOR = (255, 255, 255)
 INVENTORY_BG_COLOR = (20, 20, 25)
 
 # UI Config
-INVENTORY_RATIO = 0.3 # 30% of screen width for inventory
+INVENTORY_RATIO = 0.4 # 40% of screen width for inventory
 
 PIECE_COLORS_RGB = [
     (255, 107, 107), (78, 205, 196), (255, 230, 109), (26, 83, 92), 
@@ -53,10 +53,9 @@ class HexGame:
         self.grid = {}
         self.pieces = []
         self.dragging_piece = None
+        self.hovered_piece = None
         self.drag_offset = (0, 0)
         self.solving = False # Flag to indicate if solver is running
-        
-        self.init_hexagon_grid()
         
         self.init_hexagon_grid()
         self.generate_random_pieces() 
@@ -75,6 +74,12 @@ class HexGame:
         self.solve_button_rect = pygame.Rect(
             self.width - button_w - 20, 
             self.height - button_h - 20, 
+            button_w, button_h
+        )
+        
+        self.reset_button_rect = pygame.Rect(
+            self.width - button_w - 20,
+            self.height - button_h - 20 - button_h - 20, # Above solve button
             button_w, button_h
         )
 
@@ -109,14 +114,15 @@ class HexGame:
         center_y = self.height / 2
         grid_pixel_h = (max_r - min_r) * self.tri_h
         
-        # Left Align
-        # We want the leftmost part of the grid to start at a fixed margin (e.g., 50px)
-        # x_base = offset_x + c * half_w
-        # min_x = offset_x + min_c * half_w
-        # we want min_x = 50
-        # => offset_x = 50 - min_c * half_w
+        # Center in Game Area
+        # The game area width is the portion not taken by inventory.
+        game_area_width = self.width * (1 - INVENTORY_RATIO)
+        game_area_center_x = game_area_width / 2
         
-        self.offset_x = 50 - (min_c * self.tri_w / 2)
+        # We want the logical center of the grid to align with game_area_center_x
+        grid_pixel_w = (max_c - min_c) * (self.tri_w / 2)
+        
+        self.offset_x = game_area_center_x - grid_pixel_w / 2 - (min_c * self.tri_w / 2)
         self.offset_y = center_y - grid_pixel_h / 2 - (min_r * self.tri_h)
 
     def fit_graphics_and_layout(self):
@@ -555,6 +561,16 @@ class HexGame:
         txt_rect = btn_txt.get_rect(center=self.solve_button_rect.center)
         self.screen.blit(btn_txt, txt_rect)
 
+        # Draw "Reset" Button
+        color_r = (200, 70, 70) # Red
+        color_r_hover = (220, 90, 90)
+        draw_color_r = color_r_hover if self.reset_button_rect.collidepoint(pygame.mouse.get_pos()) else color_r
+        pygame.draw.rect(self.screen, draw_color_r, self.reset_button_rect, border_radius=10)
+        
+        reset_txt = self.font.render("RESET", True, BUTTON_TEXT_COLOR)
+        reset_rect = reset_txt.get_rect(center=self.reset_button_rect.center)
+        self.screen.blit(reset_txt, reset_rect)
+
         # Info text
         status = "SOLVED!" if self.solved else ("Solving..." if self.solving else "Manual Mode")
         if self.solved:
@@ -565,7 +581,21 @@ class HexGame:
         
         self.screen.blit(txt, (20, 20))
         
+        # Draw Tooltip if dragging or hovering
+        active_piece = self.dragging_piece if self.dragging_piece else self.hovered_piece
+        if active_piece and not active_piece['placed']:
+            msg = "Rotations: Arrow UP/DOWN (Horizontal Axis) | Arrow LEFT/RIGHT (Vertical Axis)"
+            
+            # Setup tooltip box
+            text_surf = self.font.render(msg, True, (0, 0, 0)) # Black text
+            bg_rect = text_surf.get_rect(center=(self.width/2, 30))
+            bg_rect.inflate_ip(20, 10)
+            
+            pygame.draw.rect(self.screen, (255, 255, 0), bg_rect, border_radius=5)
+            self.screen.blit(text_surf, text_surf.get_rect(center=bg_rect.center))
+
         pygame.display.flip()
+
 
     def handle_input(self):
         for event in pygame.event.get():
@@ -574,6 +604,29 @@ class HexGame:
             if event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_ESCAPE:
                     return False
+            
+            # Rotation Logic
+            if event.type == pygame.KEYDOWN:
+                target_piece = self.dragging_piece if self.dragging_piece else self.hovered_piece
+                # Prevent rotating placed pieces to avoid grid/visual desync
+                if target_piece and not target_piece['placed']:
+                    modified = False
+                    if event.key == pygame.K_UP or event.key == pygame.K_DOWN:
+                        # Flip Vertical Axis (Horizontal Reflection)
+                        # (dr, dc) -> (-dr, dc). 
+                        target_piece['shape'] = [(-r, c) for r, c in target_piece['shape']]
+                        # Toggle parity to ensure visual flip matches logical flip (Up <-> Down)
+                        target_piece['anchor_parity'] = 1 - target_piece['anchor_parity']
+                        modified = True
+                        
+                    elif event.key == pygame.K_LEFT or event.key == pygame.K_RIGHT:
+                         # Flip Horizontal Axis (Vertical Reflection)
+                         # (dr, dc) -> (dr, -dc). Parity Preserved visually (Up stays Up).
+                         target_piece['shape'] = [(r, -c) for r, c in target_piece['shape']]
+                         modified = True
+                    
+                    if modified:
+                        pass
             
             # Mouse Interaction
             if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
@@ -584,67 +637,36 @@ class HexGame:
                     self.start_solving()
                     continue
                 
+                if self.reset_button_rect.collidepoint(mx, my):
+                    self.reset_grid()
+                    # Also stop solving if running
+                    self.solving = False
+                    continue
+                
                 # 2. Check Pieces (only if not solving)
                 if not self.solving:
-                    # Check pieces in inventory or placed?
-                    grid_width = self.width * (1 - INVENTORY_RATIO)
-                    
-                    if mx > grid_width:
-                        # Inventory Click
-                        for p in self.pieces:
-                            if p['placed']: continue 
-                            # If p has a rect and clicked
-                            if p['rect'] and p['rect'].collidepoint(mx, my):
-                                self.dragging_piece = p
-                                # Offset so piece doesn't snap to mouse center
-                                px, py = p['screen_pos']
-                                self.drag_offset = (px - mx, py - my)
-                                break
-                    else:
-                        # Grid Click - Potential Pickup
-                        cell = self.screen_to_grid(mx, my)
-                        if cell and cell in self.grid and self.grid[cell] is not None:
-                             pid = self.grid[cell]
-                             piece = self.pieces[pid]
-                             # Pick up the piece
+                    piece = self.get_piece_under_mouse(mx, my)
+                    if piece:
+                         self.dragging_piece = piece
+                         
+                         # Handle pickup from grid (already placed)
+                         if piece['placed']:
                              # Remove from grid
                              if 'grid_pos' in piece:
                                  self.place_piece(piece, *piece['grid_pos'], remove=True)
-                                 
-                                 # Calculate visual position from grid pos to avoid jumping
-                                 pr, pc = piece['grid_pos']
-                                 px = self.offset_x + pc * (self.tri_w / 2)
-                                 py = self.offset_y + pr * self.tri_h
-                                 
-                                 piece['screen_pos'] = (px, py)
-                                 self.dragging_piece = piece
-                                 self.drag_offset = (px - mx, py - my)
+                         
+                         # Calculate drag offset
+                         px, py = piece['screen_pos']
+                         self.drag_offset = (px - mx, py - my)
             
             elif event.type == pygame.MOUSEBUTTONUP and event.button == 1:
                 if self.dragging_piece:
                     # Try to place
                     mx, my = event.pos
-                    # Use center of the piece for placement snap
-                    # The piece screen pos (screen_pos) is the top-left of the bounding box roughly.
-                    # We want the "Anchor" triangle center.
-                    # Anchor is at relative (0,0). Visual offset is 0,0.
-                    # BUT piece['screen_pos'] is updated during drag to be (mx+dx, my+dy).
                     
                     px, py = self.dragging_piece['screen_pos']
                     
                     # Calculate Anchor Center
-                    # Anchor Parity determines point up or down.
-                    if self.dragging_piece['anchor_parity'] == 0: # Arbitrary up/down logic depending on map
-                         # Let's say parity 0 is Point UP (based on get_triangle_points)
-                         # (r+c)%2 == 0 -> Point UP.
-                         # Center is approx +half_w, +half_h
-                         anchor_cx = px + self.tri_w / 2
-                         anchor_cy = py + self.tri_h / 2 # simplified centroid
-                    else:
-                         anchor_cx = px + self.tri_w / 2
-                         anchor_cy = py + self.tri_h / 2
-                    
-                    # More robust: Just use px + half_w, py + half_h as a good enough proxy for anchor center
                     anchor_cx = px + self.tri_w / 2
                     anchor_cy = py + self.tri_h / 2
 
@@ -665,14 +687,25 @@ class HexGame:
                     
                     self.dragging_piece = None
             
-            # Update Drag Shadow Position to snap to correct parity
             elif event.type == pygame.MOUSEMOTION:
+                mx, my = event.pos
                 if self.dragging_piece:
-                    # Optional: Add visual snap preview?
-                    # For now just standard drag
                     pass
+                else:
+                    self.hovered_piece = self.get_piece_under_mouse(mx, my)
 
         return True
+
+    def get_piece_under_mouse(self, mx, my):
+        """
+        Finds a piece under the mouse cursor.
+        Prioritizes pieces in inventory, then grid.
+        """
+        # Iterate all pieces
+        for p in self.pieces:
+            if p['rect'] and p['rect'].collidepoint(mx, my):
+                return p
+        return None
 
     def run(self):
         """

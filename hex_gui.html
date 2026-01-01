@@ -46,7 +46,7 @@
 <td class="singlecolumn">Methods defined here:<br>
 <dl><dt><a name="HexGame-__init__"><strong>__init__</strong></a>(self)</dt><dd><span class="code">Initialize&nbsp;the&nbsp;<a href="#HexGame">HexGame</a>,&nbsp;setting&nbsp;up&nbsp;the&nbsp;Pygame&nbsp;window,&nbsp;grid,&nbsp;pieces,&nbsp;and&nbsp;solver.</span></dd></dl>
 
-<dl><dt><a name="HexGame-calc_metrics"><strong>calc_metrics</strong></a>(self)</dt><dd><span class="code">Calculate&nbsp;the&nbsp;scaling&nbsp;and&nbsp;offsets&nbsp;to&nbsp;center&nbsp;the&nbsp;hexagon&nbsp;grid&nbsp;on&nbsp;the&nbsp;screen.</span></dd></dl>
+<dl><dt><a name="HexGame-calc_metrics"><strong>calc_metrics</strong></a>(self, scale_h=None)</dt><dd><span class="code">Calculate&nbsp;the&nbsp;scaling&nbsp;and&nbsp;offsets&nbsp;to&nbsp;center&nbsp;the&nbsp;hexagon&nbsp;grid&nbsp;on&nbsp;the&nbsp;screen.</span></dd></dl>
 
 <dl><dt><a name="HexGame-can_place"><strong>can_place</strong></a>(self, shapes, r, c)</dt><dd><span class="code">Check&nbsp;if&nbsp;a&nbsp;piece&nbsp;can&nbsp;be&nbsp;placed&nbsp;at&nbsp;the&nbsp;specified&nbsp;coordinates.<br>
 &nbsp;<br>
@@ -60,6 +60,8 @@ Returns:<br>
 
 <dl><dt><a name="HexGame-draw"><strong>draw</strong></a>(self)</dt><dd><span class="code">Render&nbsp;the&nbsp;game&nbsp;state&nbsp;to&nbsp;the&nbsp;screen.</span></dd></dl>
 
+<dl><dt><a name="HexGame-fit_graphics_and_layout"><strong>fit_graphics_and_layout</strong></a>(self)</dt><dd><span class="code">Iteratively&nbsp;adjusts&nbsp;the&nbsp;scale&nbsp;to&nbsp;ensure&nbsp;both&nbsp;the&nbsp;grid&nbsp;and&nbsp;the&nbsp;inventory&nbsp;pieces&nbsp;fit&nbsp;on&nbsp;screen.</span></dd></dl>
+
 <dl><dt><a name="HexGame-generate_random_pieces"><strong>generate_random_pieces</strong></a>(self)</dt><dd><span class="code">Generate&nbsp;random&nbsp;puzzle&nbsp;pieces&nbsp;to&nbsp;fill&nbsp;the&nbsp;grid.<br>
 Ensures&nbsp;that&nbsp;the&nbsp;total&nbsp;area&nbsp;of&nbsp;pieces&nbsp;matches&nbsp;the&nbsp;grid&nbsp;area.</span></dd></dl>
 
@@ -71,6 +73,9 @@ Args:<br>
 &nbsp;&nbsp;&nbsp;&nbsp;<br>
 Returns:<br>
 &nbsp;&nbsp;&nbsp;&nbsp;list:&nbsp;List&nbsp;of&nbsp;(row,&nbsp;col)&nbsp;tuples&nbsp;representing&nbsp;neighbor&nbsp;coordinates.</span></dd></dl>
+
+<dl><dt><a name="HexGame-get_piece_under_mouse"><strong>get_piece_under_mouse</strong></a>(self, mx, my)</dt><dd><span class="code">Finds&nbsp;a&nbsp;piece&nbsp;under&nbsp;the&nbsp;mouse&nbsp;cursor.<br>
+Prioritizes&nbsp;pieces&nbsp;in&nbsp;inventory,&nbsp;then&nbsp;grid.</span></dd></dl>
 
 <dl><dt><a name="HexGame-get_triangle_points"><strong>get_triangle_points</strong></a>(self, r, c)</dt><dd><span class="code">Calculate&nbsp;the&nbsp;screen&nbsp;coordinates&nbsp;for&nbsp;the&nbsp;vertices&nbsp;of&nbsp;a&nbsp;triangular&nbsp;cell.<br>
 &nbsp;<br>
@@ -91,6 +96,9 @@ The&nbsp;grid&nbsp;is&nbsp;represented&nbsp;as&nbsp;a&nbsp;dictionary&nbsp;where
 Returns:<br>
 &nbsp;&nbsp;&nbsp;&nbsp;bool:&nbsp;True&nbsp;if&nbsp;all&nbsp;grid&nbsp;cells&nbsp;are&nbsp;filled,&nbsp;False&nbsp;otherwise.</span></dd></dl>
 
+<dl><dt><a name="HexGame-layout_inventory"><strong>layout_inventory</strong></a>(self)</dt><dd><span class="code">Calculates&nbsp;screen&nbsp;positions&nbsp;for&nbsp;all&nbsp;unplaced&nbsp;pieces&nbsp;in&nbsp;the&nbsp;inventory&nbsp;area.<br>
+Returns&nbsp;True&nbsp;if&nbsp;they&nbsp;all&nbsp;fit,&nbsp;False&nbsp;otherwise.</span></dd></dl>
+
 <dl><dt><a name="HexGame-place_piece"><strong>place_piece</strong></a>(self, piece, r, c, remove=False)</dt><dd><span class="code">Place&nbsp;or&nbsp;remove&nbsp;a&nbsp;piece&nbsp;from&nbsp;the&nbsp;grid.<br>
 &nbsp;<br>
 Args:<br>
@@ -103,8 +111,13 @@ Args:<br>
 
 <dl><dt><a name="HexGame-run"><strong>run</strong></a>(self)</dt><dd><span class="code">Main&nbsp;game&nbsp;loop.&nbsp;Handles&nbsp;events&nbsp;and&nbsp;updates&nbsp;the&nbsp;solver.</span></dd></dl>
 
-<dl><dt><a name="HexGame-screen_to_grid"><strong>screen_to_grid</strong></a>(self, x, y)</dt><dd><span class="code">Convert&nbsp;screen&nbsp;coordinates&nbsp;to&nbsp;approximate&nbsp;grid&nbsp;coordinates.<br>
-This&nbsp;is&nbsp;a&nbsp;heuristic&nbsp;approach&nbsp;finding&nbsp;the&nbsp;closest&nbsp;cell&nbsp;center.</span></dd></dl>
+<dl><dt><a name="HexGame-screen_to_grid"><strong>screen_to_grid</strong></a>(self, x, y, required_parity=None)</dt><dd><span class="code">Convert&nbsp;screen&nbsp;coordinates&nbsp;to&nbsp;approximate&nbsp;grid&nbsp;coordinates.<br>
+This&nbsp;is&nbsp;a&nbsp;heuristic&nbsp;approach&nbsp;finding&nbsp;the&nbsp;closest&nbsp;cell&nbsp;center.<br>
+&nbsp;<br>
+Args:<br>
+&nbsp;&nbsp;&nbsp;&nbsp;x&nbsp;(float):&nbsp;Screen&nbsp;x&nbsp;coordinate.<br>
+&nbsp;&nbsp;&nbsp;&nbsp;y&nbsp;(float):&nbsp;Screen&nbsp;y&nbsp;coordinate.<br>
+&nbsp;&nbsp;&nbsp;&nbsp;required_parity&nbsp;(int,&nbsp;optional):&nbsp;If&nbsp;set,&nbsp;only&nbsp;returns&nbsp;cells&nbsp;with&nbsp;(r+c)%2&nbsp;==&nbsp;parity.</span></dd></dl>
 
 <dl><dt><a name="HexGame-solve_generator"><strong>solve_generator</strong></a>(self)</dt><dd><span class="code">Coroutine&nbsp;generator&nbsp;for&nbsp;the&nbsp;backtracking&nbsp;solver.<br>
 Yields&nbsp;control&nbsp;back&nbsp;to&nbsp;the&nbsp;main&nbsp;loop&nbsp;to&nbsp;allow&nbsp;for&nbsp;GUI&nbsp;updates.<br>
@@ -132,10 +145,10 @@ Data descriptors defined here:<br>
 <strong>BUTTON_COLOR</strong> = (50, 150, 50)<br>
 <strong>BUTTON_HOVER_COLOR</strong> = (70, 180, 70)<br>
 <strong>BUTTON_TEXT_COLOR</strong> = (255, 255, 255)<br>
-<strong>GRID_COLOR</strong> = (40, 40, 50)<br>
+<strong>GRID_COLOR</strong> = (60, 60, 70)<br>
 <strong>HEX_SIDE</strong> = 3<br>
 <strong>INVENTORY_BG_COLOR</strong> = (20, 20, 25)<br>
-<strong>INVENTORY_RATIO</strong> = 0.3<br>
+<strong>INVENTORY_RATIO</strong> = 0.4<br>
 <strong>PIECE_COLORS_RGB</strong> = [(255, 107, 107), (78, 205, 196), (255, 230, 109), (26, 83, 92), (247, 255, 247), (255, 50, 50), (100, 100, 255), (100, 255, 100), (255, 100, 255), (100, 255, 255), (255, 150, 50), (150, 50, 255), (50, 250, 150), (250, 50, 150), (50, 150, 250), (200, 200, 200)]<br>
 <strong>TARGET_DELAY</strong> = 50<br>
 <strong>TEXT_COLOR</strong> = (200, 200, 200)</td></tr></table>
