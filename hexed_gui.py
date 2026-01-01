@@ -365,6 +365,20 @@ class HexGame:
         self.start_time = time.time()
         self.solver_iter = self.solve_generator()
 
+    def regenerate_level(self):
+        """
+        Regenerates a new puzzle level.
+        """
+        self.solving = False
+        self.solved = False
+        self.dragging_piece = None
+        self.hovered_piece = None
+        
+        self.init_hexagon_grid()
+        self.generate_random_pieces()
+        self.fit_graphics_and_layout()
+        self.solver_iter = self.solve_generator()
+
     def can_place(self, shapes, r, c):
         """
         Check if a piece can be placed at the specified coordinates.
@@ -591,6 +605,10 @@ class HexGame:
         
         self.screen.blit(txt, (20, 20))
         
+        # Bottom Left Info
+        info_txt = self.font.render("ESC: Exit | R: Regenerate", True, (150, 150, 150))
+        self.screen.blit(info_txt, (20, self.height - 40))
+        
         # Draw Tooltip if dragging or hovering
         active_piece = self.dragging_piece if self.dragging_piece else self.hovered_piece
         if active_piece and not active_piece['placed']:
@@ -614,6 +632,8 @@ class HexGame:
             if event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_ESCAPE:
                     return False
+                if event.key == pygame.K_r:
+                    self.regenerate_level()
             
             # Rotation Logic
             if event.type == pygame.KEYDOWN:
