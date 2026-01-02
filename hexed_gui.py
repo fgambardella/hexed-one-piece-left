@@ -9,9 +9,8 @@ HEX_SIDE = 3
 TARGET_DELAY = 50 # ms between steps (controls visual speed)
 
 # Colors (RGB)
-# Colors (RGB)
 BG_COLOR = (15, 15, 20) # Dark, modern
-GRID_COLOR = (60, 60, 70) # Increased contrast
+GRID_COLOR = (220, 220, 220) # Light gray (Gainsboro)
 TEXT_COLOR = (200, 200, 200)
 BUTTON_COLOR = (50, 150, 50)
 BUTTON_HOVER_COLOR = (70, 180, 70)
@@ -19,7 +18,7 @@ BUTTON_TEXT_COLOR = (255, 255, 255)
 INVENTORY_BG_COLOR = (20, 20, 25)
 
 # UI Config
-INVENTORY_RATIO = 0.4 # 40% of screen width for inventory
+INVENTORY_RATIO = 0.4 # 40% of screen width for pieces inventory
 
 PIECE_COLORS_RGB = [
     (255, 107, 107), (78, 205, 196), (255, 230, 109), (26, 83, 92), 
@@ -30,7 +29,8 @@ PIECE_COLORS_RGB = [
 
 class HexGame:
     """
-    A class to represent and solve a Hexagon tiling puzzle using a backtracking algorithm with visual representation.
+    A class to represent and solve a Hexagon tiling puzzle manually or 
+    automatically using a backtracking algorithm with visual representation.
     """
     def __init__(self):
         """
@@ -208,19 +208,46 @@ class HexGame:
         """
         Initialize the hexagonal grid coordinates.
         The grid is represented as a dictionary where keys are (row, col) tuples.
+        
+        The grid structure creates a large hexagon composed of smaller triangles.
+        It does this by stacking rows of varying lengths (number of triangles).
+        Rows start shorter at the top, widen to the middle, and narrow again at the bottom.
         """
         self.grid = {}
-        max_width = (2 * self.side + 1) + 2 * (self.side - 1)
-        for r in range(self.side * 2):
-            if r < self.side:
-                count = (2 * self.side + 1) + 2 * r
+        
+        # Calculate the maximum width of the hexagon (the middle rows).
+        # Formula breakdown:
+        # (2 * self.side + 1): The base width (number of triangles) of the top/bottom rows.
+        # 2 * (self.side - 1): The total expansion width added to reach the middle.
+        # For side=3: Base=7, Expansion=4, Max Width=11.
+        max_row_width = (2 * self.side + 1) + 2 * (self.side - 1)
+        
+        total_rows = self.side * 2
+        
+        for row_index in range(total_rows):
+            # Calculate how many triangles (columns) should be in this row.
+            
+            # Upper Half (and middle-upper): Width increases by 2 each step
+            if row_index < self.side:
+                # Start with the base width and add 2 triangles for each row down (1 on each side)
+                num_triangles = (2 * self.side + 1) + 2 * row_index
+            
+            # Lower Half: Width decreases
             else:
-                dist_from_bottom = (2 * self.side - 1) - r
-                count = (2 * self.side + 1) + 2 * dist_from_bottom
-            offset = (max_width - count) // 2
-            for k in range(count):
-                c = offset + k
-                self.grid[(r, c)] = None
+                # Calculate distance from the bottom to mirror the top half logic
+                # (total_rows - 1) is the index of the last row
+                rows_from_bottom = (total_rows - 1) - row_index
+                num_triangles = (2 * self.side + 1) + 2 * rows_from_bottom
+            
+            # Calculate the horizontal offset (indentation) to center this row relative to the max width.
+            # Shorter rows need more offset to be centered.
+            col_offset = (max_row_width - num_triangles) // 2
+            
+            # Populate the grid with coordinates for this row
+            for k in range(num_triangles):
+                col_index = col_offset + k
+                # Initialize the cell with None (indicating no piece is placed here yet)
+                self.grid[(row_index, col_index)] = None
 
     def get_neighbors(self, r, c):
         """
@@ -243,59 +270,121 @@ class HexGame:
     def generate_random_pieces(self):
         """
         Generate random puzzle pieces to fill the grid.
-        Ensures that the total area of pieces matches the grid area.
+        
+        This algorithm works by:
+        1. Starting with a full grid of available cells.
+        2. Randomly selecting an empty cell to start a new piece.
+        3. "Growing" the piece by randomly adding unvisited neighbors until a desired size is reached.
+        4. Repeating this process until the entire grid is covered.
+        5. If the random generation leaves tiny gaps (< 3 cells) or fails, it restarts from scratch.
         """
-        # Logic identical to previous script...
         while True:
-            for k in self.grid: self.grid[k] = None
-            self.pieces = []
-            coords = list(self.grid.keys())
-            random.shuffle(coords)
-            temp_grid = {k: None for k in coords}
-            piece_id_counter = 0
-            generation_failed = False
-            working_coords = list(coords)
+            # 1. Reset: Treat all grid cells as unvisited (None)
+            for k in self.grid: 
+                self.grid[k] = None
             
-            while working_coords:
-                start_node = working_coords.pop()
-                while start_node not in temp_grid or temp_grid[start_node] is not None:
-                    if not working_coords: break
-                    start_node = working_coords.pop()
-                if temp_grid.get(start_node) is not None: continue
-    
-                piece_size = random.randint(6, 9)
-                new_piece_coords = [start_node]
-                temp_grid[start_node] = piece_id_counter
-                candidates = set()
+            self.pieces = []
+            
+            # List of all coordinates in the grid
+            all_coordinates = list(self.grid.keys())
+            
+            # Shuffle to ensure random piece shapes and placement order
+            random.shuffle(all_coordinates)
+            
+            # Temporary grid to track piece assignment during generation
+            # Key: (row, col), Value: Piece ID or None
+            generation_grid = {k: None for k in all_coordinates}
+            
+            piece_id = 0
+            generation_failed = False
+            
+            # Keep a working list of coordinates to pick start points from
+            unprocessed_coordinates = list(all_coordinates)
+            
+            while unprocessed_coordinates:
+                # 2. Pick a starting cell for the new piece
+                start_cell = unprocessed_coordinates.pop()
                 
-                def add_candidates(r, c):
-                    for n in self.get_neighbors(r, c):
-                        if n in temp_grid and temp_grid[n] is None: candidates.add(n)
-    
-                add_candidates(*start_node)
-                while len(new_piece_coords) < piece_size and candidates:
-                    next_node = random.choice(list(candidates))
-                    candidates.remove(next_node)
-                    if temp_grid[next_node] is None:
-                        temp_grid[next_node] = piece_id_counter
-                        new_piece_coords.append(next_node)
-                        add_candidates(*next_node)
-                        if next_node in working_coords: working_coords.remove(next_node)
+                # Ensure the start cell hasn't been taken by a previous piece
+                # (It might have been added to a piece but not removed from this list yet)
+                while start_cell not in generation_grid or generation_grid[start_cell] is not None:
+                    if not unprocessed_coordinates: 
+                        break
+                    start_cell = unprocessed_coordinates.pop()
                 
-                if len(new_piece_coords) < 3:
-                     generation_failed = True; break
-
-                if new_piece_coords:
-                    ref_r, ref_c = min(new_piece_coords)
-                    normalized = [(r-ref_r, c-ref_c) for r, c in new_piece_coords]
-                    color = PIECE_COLORS_RGB[piece_id_counter % len(PIECE_COLORS_RGB)]
+                # If we've processed everything, stop
+                if generation_grid.get(start_cell) is not None: 
+                    continue
+    
+                # 3. Determine random size (6-9 triangles is a good puzzle piece size)
+                target_piece_size = random.randint(6, 9)
+                
+                # Start building the piece
+                current_piece_cells = [start_cell]
+                generation_grid[start_cell] = piece_id
+                
+                # Set of potential neighboring cells to expand into
+                potential_neighbors = set()
+                
+                def add_valid_neighbors(row_index, col_index):
+                    """
+                    Helper to add unvisited neighbors to the candidate set.
                     
-                    anchor_parity = (ref_r + ref_c) % 2
+                    Args:
+                        row_index (int): The row index of the cell whose neighbors we want to check.
+                        col_index (int): The column index of the cell whose neighbors we want to check.
+                    """
+                    for neighbor_cell in self.get_neighbors(row_index, col_index):
+                        # Only add if neighbor exists in grid and is not yet assigned
+                        if neighbor_cell in generation_grid and generation_grid[neighbor_cell] is None: 
+                            potential_neighbors.add(neighbor_cell)
+    
+                add_valid_neighbors(*start_cell)
+                
+                # Grow the piece
+                while len(current_piece_cells) < target_piece_size and potential_neighbors:
+                    # Pick a random neighbor to attach
+                    next_cell = random.choice(list(potential_neighbors))
+                    potential_neighbors.remove(next_cell)
+                    
+                    # Double check it's still free (should be)
+                    if generation_grid[next_cell] is None:
+                        generation_grid[next_cell] = piece_id
+                        current_piece_cells.append(next_cell)
+                        
+                        # Add NEW neighbors from this new cell
+                        add_valid_neighbors(*next_cell)
+                        
+                        # Optimization: Remove from global unprocessed list if present
+                        if next_cell in unprocessed_coordinates: 
+                            unprocessed_coordinates.remove(next_cell)
+                
+                # 4. Check for failure conditions (tiny leftover pieces)
+                if len(current_piece_cells) < 3:
+                     generation_failed = True
+                     break
 
-                    # Store piece object - Positions will be set by layout_inventory later
-                    piece_obj = {
-                        'id': piece_id_counter, 
-                        'shape': normalized, 
+                # 5. Finalize the piece
+                if current_piece_cells:
+                    # Normalize coordinates relative to top-left-most cell (reference)
+                    # min() works lexographically: lowest row, then lowest col
+                    ref_row, ref_col = min(current_piece_cells)
+                    
+                    relative_shape_coords = [(r - ref_row, c - ref_col) for r, c in current_piece_cells]
+                    
+                    # Assign a color
+                    color = PIECE_COLORS_RGB[piece_id % len(PIECE_COLORS_RGB)]
+                    
+                    # Calculate "Anchor Parity"
+                    # This tracks whether the reference cell (0,0 in relative terms) points UP or DOWN.
+                    # Essential for correctly rendering the shape if it's rotated later.
+                    anchor_parity = (ref_row + ref_col) % 2
+
+                    # Store piece object
+                    # Positions will be set physically by 'layout_inventory' later.
+                    new_piece_obj = {
+                        'id': piece_id, 
+                        'shape': relative_shape_coords, 
                         'color': color, 
                         'placed': False,
                         'anchor_parity': anchor_parity,
@@ -303,12 +392,21 @@ class HexGame:
                         'reset_pos': (0, 0),
                         'rect': None
                     }
-                    self.pieces.append(piece_obj)
-                    piece_id_counter += 1
+                    # The 'rect' property stores the bounding box (pygame.Rect) of the piece on screen.
+                    # It is calculated dynamically during rendering (in the draw() method) and used by the
+                    # get_piece_under_mouse() method to detect if the mouse cursor is hovering over or clicking on this piece.
+                    # Initially it is set to None since the piece hasn't been drawn yet.
+                    
+                    self.pieces.append(new_piece_obj)
+                    piece_id += 1
             
-            if not generation_failed: break
+            # If generation was successful, exit the outer retry loop
+            if not generation_failed: 
+                break
         
-        for k in self.grid: self.grid[k] = None
+        # Cleanup: Reset the main grid logical state to empty
+        for k in self.grid: 
+            self.grid[k] = None
 
     def screen_to_grid(self, x, y, required_parity=None):
         """
