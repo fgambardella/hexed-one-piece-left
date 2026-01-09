@@ -99,40 +99,47 @@ class HexGame:
         # Calculate scale to center hexagon on screen
         # Grid goes from 'side' vertically
         grid_h_units = self.side * 2  # num rows
-        grid_w_units = self.side * 4 # approx width
         
         # Margins & Layout
-        # Grid takes up left portion
-        grid_width_px = self.width * (1 - INVENTORY_RATIO)
-        
         avail_h = scale_h if scale_h else self.height * 0.8
-        avail_w = grid_width_px * 0.8
         
         self.tri_h = avail_h / grid_h_units
-        # In an equilateral/similar triangle, w = h * 2 / sqrt(3) for equilateral, but here we use w=base
-        # We use simple aspect ratio to fill
-        self.tri_w = self.tri_h * 1.2 
+        # In an equilateral triangle: side = height * 2 / sqrt(3) = height * 1.15470054
+        # Here we use side as the base of the triangle to calculate the width of a trinangle from its height:
+        self.tri_w = self.tri_h * 1.1547
         
-        # Centering Offset
-        # Logical Bounding box
-        min_r = min(k[0] for k in self.grid)
-        max_r = max(k[0] for k in self.grid)
-        min_c = min(k[1] for k in self.grid)
-        max_c = max(k[1] for k in self.grid)
+        # ===== CALCULATE LOGICAL BOUNDING BOX OF THE GRID =====
+        # The grid is stored as a dictionary where keys are (row, col) tuples.
+        # We need to find the extent of the grid in logical coordinates to center it on screen.
+        # Row indices increase downward (row 0 is at the top, higher rows are lower).
+        # Column indices increase to the right (col 0 is leftmost, higher columns are to the right).
+        # By finding the min/max row and column, we get the "bounding box" of the hexagonal grid:
+        grid_top_row = min(k[0] for k in self.grid) # The topmost row index in the grid (smallest row number)
+        grid_bottom_row = max(k[0] for k in self.grid) # The bottommost row index in the grid (largest row number)
+        grid_left_col = min(k[1] for k in self.grid) # The leftmost column index in the grid (smallest column number)
+        grid_right_col = max(k[1] for k in self.grid) # The rightmost column index in the grid (largest column number)
         
-        center_y = self.height / 2
-        grid_pixel_h = (max_r - min_r) * self.tri_h
+        # ===== CALCULATE PIXEL DIMENSIONS AND CENTERING OFFSETS =====
+        # Calculate the total pixel height of the grid
+        # (number of rows * height per triangle + 1 to account for the bottom row extent)
+        grid_pixel_height = (grid_bottom_row - grid_top_row + 1) * self.tri_h
         
-        # Center in Game Area
-        # The game area width is the portion not taken by inventory.
+        # The game area is the left portion of the screen (inventory takes the right side)
         game_area_width = self.width * (1 - INVENTORY_RATIO)
         game_area_center_x = game_area_width / 2
+        screen_center_y = self.height / 2
         
-        # We want the logical center of the grid to align with game_area_center_x
-        grid_pixel_w = (max_c - min_c) * (self.tri_w / 2)
+        # Calculate the total pixel width of the grid
+        # Each column is offset by half a triangle width, plus one full triangle width for the edge
+        # The formula: (num_columns - 1) * (tri_w / 2) + tri_w = (num_columns + 1) * (tri_w / 2)
+        num_columns = grid_right_col - grid_left_col + 1
+        grid_pixel_width = (num_columns + 1) * (self.tri_w / 2)
         
-        self.offset_x = game_area_center_x - grid_pixel_w / 2 - (min_c * self.tri_w / 2)
-        self.offset_y = center_y - grid_pixel_h / 2 - (min_r * self.tri_h)
+        # Calculate offsets to center the grid in the game area
+        # offset_x: Shifts the grid horizontally so it's centered in the game area
+        # offset_y: Shifts the grid vertically so it's centered on the screen
+        self.offset_x = game_area_center_x - grid_pixel_width / 2 - (grid_left_col * self.tri_w / 2)
+        self.offset_y = screen_center_y - grid_pixel_height / 2 - (grid_top_row * self.tri_h)
 
     def fit_graphics_and_layout(self):
         """
@@ -703,7 +710,6 @@ class HexGame:
         """
         self.screen.fill(BG_COLOR)
         
-        # Draw Inventory Background
         # Draw Inventory Background
         inv_rect = pygame.Rect(self.width * (1 - INVENTORY_RATIO), 0, self.width * INVENTORY_RATIO, self.height)
         pygame.draw.rect(self.screen, INVENTORY_BG_COLOR, inv_rect)
