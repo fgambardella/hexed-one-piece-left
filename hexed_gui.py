@@ -3,6 +3,7 @@ import random
 import time
 import sys
 import math
+from particle import Particle
 
 # --- CONFIGURATION ---
 HEX_SIDE = 3
@@ -82,6 +83,14 @@ class HexGame:
             self.height - button_h - 20 - button_h - 20, # Above solve button
             button_w, button_h
         )
+        
+        # Completion Animation State
+        self.completion_animation_active = False
+        self.completion_animation_start = 0
+        self.completion_phase = "text"  # "text" -> "explode" -> "done"
+        self.completion_particles = []
+        self.completion_letter_data = []  # Stores (char, x, y, color, font_surface)
+        self.completion_font = pygame.font.SysFont("Arial", 120, bold=True)
 
     def calc_metrics(self, scale_h=None):
         """
@@ -583,6 +592,111 @@ class HexGame:
             p3 = (x_base + half_w, y_bot)      # Bot
         return [p1, p2, p3]
 
+    def start_completion_animation(self):
+        """
+        Initialize the completion animation with colorful 'Completed!' text.
+        """
+        self.completion_animation_active = True
+        self.completion_animation_start = pygame.time.get_ticks()
+        self.completion_phase = "text"
+        self.completion_particles = []
+        self.completion_letter_data = []
+        
+        text = "Completed!"
+        
+        # Calculate total width for centering
+        letter_surfaces = []
+        total_width = 0
+        for char in text:
+            color = random.choice(PIECE_COLORS_RGB)
+            surf = self.completion_font.render(char, True, color)
+            letter_surfaces.append((char, surf, color))
+            total_width += surf.get_width()
+        
+        # Position letters centered on screen
+        start_x = (self.width - total_width) // 2
+        y = (self.height - self.completion_font.get_height()) // 2
+        
+        current_x = start_x
+        for char, surf, color in letter_surfaces:
+            self.completion_letter_data.append({
+                'char': char,
+                'x': current_x,
+                'y': y,
+                'color': color,
+                'surface': surf,
+                'width': surf.get_width(),
+                'height': surf.get_height()
+            })
+            current_x += surf.get_width()
+    
+    def update_completion_animation(self):
+        """
+        Update the completion animation state (phases and particles).
+        """
+        if not self.completion_animation_active:
+            return
+        
+        elapsed = pygame.time.get_ticks() - self.completion_animation_start
+        
+        if self.completion_phase == "text":
+            # After 3 seconds, transition to explosion
+            if elapsed >= 3000:
+                self.completion_phase = "explode"
+                # Create particles from each letter
+                for letter in self.completion_letter_data:
+                    # Create multiple particles per letter
+                    for _ in range(30):
+                        px = letter['x'] + random.uniform(0, letter['width'])
+                        py = letter['y'] + random.uniform(0, letter['height'])
+                        particle = Particle(px, py, letter['color'])
+                        self.completion_particles.append(particle)
+                # Clear letter data so text stops rendering
+                self.completion_letter_data = []
+        
+        elif self.completion_phase == "explode":
+            # Update all particles
+            for particle in self.completion_particles:
+                particle.update()
+            
+            # Remove dead particles
+            self.completion_particles = [p for p in self.completion_particles if p.is_alive()]
+            
+            # When all particles are gone, animation is done
+            if len(self.completion_particles) == 0:
+                self.completion_phase = "done"
+                self.completion_animation_active = False
+    
+    def draw_completion_animation(self):
+        """
+        Draw the completion animation overlay (text and particles).
+        """
+        if not self.completion_animation_active:
+            return
+        
+        elapsed = pygame.time.get_ticks() - self.completion_animation_start
+        
+        if self.completion_phase == "text":
+            # Draw each letter with a subtle scale pulse effect
+            pulse = 1.0 + 0.05 * math.sin(elapsed / 150)
+            
+            for letter in self.completion_letter_data:
+                # Apply pulse scaling
+                scaled_w = int(letter['width'] * pulse)
+                scaled_h = int(letter['height'] * pulse)
+                scaled_surf = pygame.transform.smoothscale(letter['surface'], (scaled_w, scaled_h))
+                
+                # Adjust position to keep centered while pulsing
+                offset_x = (letter['width'] - scaled_w) // 2
+                offset_y = (letter['height'] - scaled_h) // 2
+                
+                self.screen.blit(scaled_surf, (letter['x'] + offset_x, letter['y'] + offset_y))
+        
+        elif self.completion_phase == "explode":
+            # Draw all particles
+            for particle in self.completion_particles:
+                particle.draw(self.screen)
+
     def draw(self):
         """
         Render the game state to the screen.
@@ -720,6 +834,10 @@ class HexGame:
             pygame.draw.rect(self.screen, (255, 255, 0), bg_rect, border_radius=5)
             self.screen.blit(text_surf, text_surf.get_rect(center=bg_rect.center))
 
+        # Draw completion animation overlay (on top of everything)
+        self.update_completion_animation()
+        self.draw_completion_animation()
+
         pygame.display.flip()
 
 
@@ -808,6 +926,12 @@ class HexGame:
                         if self.can_place(self.dragging_piece['shape'], tr, tc):
                             self.place_piece(self.dragging_piece, tr, tc)
                             placed = True
+                            
+                            # Check for manual puzzle completion
+                            if not self.solved and self.is_solved():
+                                self.solved = True
+                                self.solution_time = 0  # Manual mode, no timer
+                                self.start_completion_animation()
                     
                     if not placed:
                         # Return to inventory (reset pos)
@@ -824,6 +948,97 @@ class HexGame:
 
         return True
 
+    def show_splash_screen(self):
+        """
+        Display a splash screen for 10 seconds with the game logo and tagline.
+        User can skip by pressing any key or clicking the mouse.
+        """
+        # Load the splash image
+        import os
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        image_path = os.path.join(script_dir, "assets", "hexed-one-piece-left.png")
+        
+        try:
+            splash_image = pygame.image.load(image_path)
+        except pygame.error as e:
+            print(f"Could not load splash image: {e}")
+            return
+        
+        # Scale image to fit nicely on screen (max 60% of screen width)
+        img_width, img_height = splash_image.get_size()
+        max_width = self.width * 0.6
+        max_height = self.height * 0.5
+        
+        scale_factor = min(max_width / img_width, max_height / img_height)
+        new_width = int(img_width * scale_factor)
+        new_height = int(img_height * scale_factor)
+        
+        splash_image = pygame.transform.smoothscale(splash_image, (new_width, new_height))
+        
+        # Splash screen colors (dark theme)
+        SPLASH_BG = (10, 10, 15)  # Very dark background
+        TAGLINE_COLOR = (180, 180, 180)  # Subtle gray for tagline
+        SKIP_HINT_COLOR = (100, 100, 100)  # Even more subtle for skip hint
+        
+        # Fonts
+        tagline_font = pygame.font.SysFont("Georgia", 28, italic=True)
+        skip_font = pygame.font.SysFont("Arial", 18)
+        
+        # Tagline text
+        tagline = "Only one piece left! It fits... until it doesn't. Can you solve it?"
+        tagline_surface = tagline_font.render(tagline, True, TAGLINE_COLOR)
+        
+        # Skip hint
+        skip_hint = "Press any key or click to start"
+        skip_surface = skip_font.render(skip_hint, True, SKIP_HINT_COLOR)
+        
+        # Calculate positions
+        image_x = (self.width - new_width) // 2
+        image_y = (self.height - new_height) // 2 - 50  # Slightly above center
+        
+        tagline_x = (self.width - tagline_surface.get_width()) // 2
+        tagline_y = image_y + new_height + 40
+        
+        skip_x = (self.width - skip_surface.get_width()) // 2
+        skip_y = self.height - 60
+        
+        # Display splash for 10 seconds or until user input
+        splash_duration = 10000  # milliseconds
+        start_time = pygame.time.get_ticks()
+        
+        running = True
+        while running:
+            elapsed = pygame.time.get_ticks() - start_time
+            
+            if elapsed >= splash_duration:
+                break
+            
+            # Handle events
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    pygame.quit()
+                    sys.exit()
+                if event.type == pygame.KEYDOWN or event.type == pygame.MOUSEBUTTONDOWN:
+                    running = False
+                    break
+            
+            # Draw splash screen
+            self.screen.fill(SPLASH_BG)
+            
+            # Draw image
+            self.screen.blit(splash_image, (image_x, image_y))
+            
+            # Draw tagline
+            self.screen.blit(tagline_surface, (tagline_x, tagline_y))
+            
+            # Draw skip hint with pulsing effect
+            alpha = int(128 + 127 * math.sin(elapsed / 500))  # Pulsing opacity
+            skip_surface.set_alpha(alpha)
+            self.screen.blit(skip_surface, (skip_x, skip_y))
+            
+            pygame.display.flip()
+            self.clock.tick(60)
+
     def get_piece_under_mouse(self, mx, my):
         """
         Finds a piece under the mouse cursor.
@@ -839,6 +1054,9 @@ class HexGame:
         """
         Main game loop. Handles events and updates the solver.
         """
+        # Show splash screen before starting the game
+        self.show_splash_screen()
+        
         running = True
         last_step = 0
         
@@ -855,10 +1073,12 @@ class HexGame:
                             self.solved = True
                             self.solution_time = time.time() - self.start_time
                             self.solving = False
+                            self.start_completion_animation()
                         elif self.is_solved(): # Check double catch
                             self.solved = True
                             self.solution_time = time.time() - self.start_time
                             self.solving = False
+                            self.start_completion_animation()
                     except StopIteration:
                         # Backtracking finished without solution (should not happen here)
                         self.solving = False

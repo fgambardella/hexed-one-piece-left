@@ -61,6 +61,8 @@ Returns:<br>
 
 <dl><dt><a name="HexGame-draw"><strong>draw</strong></a>(self)</dt><dd><span class="code">Render&nbsp;the&nbsp;game&nbsp;state&nbsp;to&nbsp;the&nbsp;screen.</span></dd></dl>
 
+<dl><dt><a name="HexGame-draw_completion_animation"><strong>draw_completion_animation</strong></a>(self)</dt><dd><span class="code">Draw&nbsp;the&nbsp;completion&nbsp;animation&nbsp;overlay&nbsp;(text&nbsp;and&nbsp;particles).</span></dd></dl>
+
 <dl><dt><a name="HexGame-fit_graphics_and_layout"><strong>fit_graphics_and_layout</strong></a>(self)</dt><dd><span class="code">Iteratively&nbsp;adjusts&nbsp;the&nbsp;scale&nbsp;to&nbsp;ensure&nbsp;both&nbsp;the&nbsp;grid&nbsp;and&nbsp;the&nbsp;inventory&nbsp;pieces&nbsp;fit&nbsp;on&nbsp;screen.</span></dd></dl>
 
 <dl><dt><a name="HexGame-generate_random_pieces"><strong>generate_random_pieces</strong></a>(self)</dt><dd><span class="code">Generate&nbsp;random&nbsp;puzzle&nbsp;pieces&nbsp;to&nbsp;fill&nbsp;the&nbsp;grid.<br>
@@ -132,13 +134,20 @@ Args:<br>
 &nbsp;&nbsp;&nbsp;&nbsp;y&nbsp;(float):&nbsp;Screen&nbsp;y&nbsp;coordinate.<br>
 &nbsp;&nbsp;&nbsp;&nbsp;required_parity&nbsp;(int,&nbsp;optional):&nbsp;If&nbsp;set,&nbsp;only&nbsp;returns&nbsp;cells&nbsp;with&nbsp;(r+c)%2&nbsp;==&nbsp;parity.</span></dd></dl>
 
+<dl><dt><a name="HexGame-show_splash_screen"><strong>show_splash_screen</strong></a>(self)</dt><dd><span class="code">Display&nbsp;a&nbsp;splash&nbsp;screen&nbsp;for&nbsp;10&nbsp;seconds&nbsp;with&nbsp;the&nbsp;game&nbsp;logo&nbsp;and&nbsp;tagline.<br>
+User&nbsp;can&nbsp;skip&nbsp;by&nbsp;pressing&nbsp;any&nbsp;key&nbsp;or&nbsp;clicking&nbsp;the&nbsp;mouse.</span></dd></dl>
+
 <dl><dt><a name="HexGame-solve_generator"><strong>solve_generator</strong></a>(self)</dt><dd><span class="code">Coroutine&nbsp;generator&nbsp;for&nbsp;the&nbsp;backtracking&nbsp;solver.<br>
 Yields&nbsp;control&nbsp;back&nbsp;to&nbsp;the&nbsp;main&nbsp;loop&nbsp;to&nbsp;allow&nbsp;for&nbsp;GUI&nbsp;updates.<br>
 &nbsp;<br>
 Yields:<br>
 &nbsp;&nbsp;&nbsp;&nbsp;bool:&nbsp;True&nbsp;if&nbsp;solved,&nbsp;False&nbsp;if&nbsp;continuing&nbsp;search.</span></dd></dl>
 
+<dl><dt><a name="HexGame-start_completion_animation"><strong>start_completion_animation</strong></a>(self)</dt><dd><span class="code">Initialize&nbsp;the&nbsp;completion&nbsp;animation&nbsp;with&nbsp;colorful&nbsp;'Completed!'&nbsp;text.</span></dd></dl>
+
 <dl><dt><a name="HexGame-start_solving"><strong>start_solving</strong></a>(self)</dt><dd><span class="code">Resets&nbsp;the&nbsp;puzzle&nbsp;and&nbsp;starts&nbsp;the&nbsp;automatic&nbsp;solver.</span></dd></dl>
+
+<dl><dt><a name="HexGame-update_completion_animation"><strong>update_completion_animation</strong></a>(self)</dt><dd><span class="code">Update&nbsp;the&nbsp;completion&nbsp;animation&nbsp;state&nbsp;(phases&nbsp;and&nbsp;particles).</span></dd></dl>
 
 <hr>
 Data descriptors defined here:<br>
